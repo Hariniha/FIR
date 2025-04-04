@@ -8,15 +8,9 @@ function HomePage() {
   const [isCalling, setIsCalling] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
-  const [extractedData, setExtractedData] = useState({
-    name: '',
-    location: '',
-    complaint: '',
-    contact: '',
-    timestamp: ''
-  });
   const [callStatus, setCallStatus] = useState('');
   const [transcript, setTranscript] = useState('');
+  const [audioURL, setAudioURL] = useState('');
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -25,146 +19,61 @@ function HomePage() {
 
   // Initialize speech recognition
   const initSpeechRecognition = () => {
-    try {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        throw new Error('Speech recognition not supported in this browser');
-      }
-
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        setTranscript(finalTranscript || interimTranscript);
-        
-        if (finalTranscript) {
-          const data = extractDataFromTranscript(finalTranscript);
-          setExtractedData(data);
-          console.log('Extracted Data:', data);
-        }
-      };
-
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        setCallStatus(`Speech recognition error: ${event.error}`);
-      };
-
-      return recognition;
-    } catch (error) {
-      console.error('Speech recognition initialization failed:', error);
-      setCallStatus('Speech recognition unavailable - using audio recording only');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setCallStatus('Speech recognition not supported');
       return null;
     }
-  };
 
-  // Enhanced data extraction from transcript
-  const extractDataFromTranscript = (transcript) => {
-    // Helper function to extract using multiple patterns
-    const extractField = (patterns, text) => {
-      for (const pattern of patterns) {
-        const match = text.match(pattern);
-        if (match) return match[1] ? match[1].trim() : match[0].trim();
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
       }
-      return '';
+
+      console.log('Interim:', interimTranscript);
+      console.log('Final:', finalTranscript);
+      setTranscript(prev => prev + finalTranscript);
     };
 
-    // Patterns for different fields
-    const namePatterns = [
-      /my name is ([A-Za-z]+(?:\s[A-Za-z]+)?)/i,
-      /I am ([A-Za-z]+(?:\s[A-Za-z]+)?)/i,
-      /call me ([A-Za-z]+)/i,
-      /name is ([A-Za-z]+)/i
-    ];
-
-    const locationPatterns = [
-      /at ([A-Za-z]+(?:\s[A-Za-z]+)*)/i,
-      /in ([A-Za-z]+(?:\s[A-Za-z]+)*)/i,
-      /near ([A-Za-z]+(?:\s[A-Za-z]+)*)/i,
-      /location is ([A-Za-z]+(?:\s[A-Za-z]+)*)/i
-    ];
-
-    const complaintPatterns = [
-      /report (a|an)? ([A-Za-z]+)/i,
-      /there's (a|an)? ([A-Za-z]+)/i,
-      /(?:crime|incident) is ([A-Za-z]+)/i,
-      /I need help with ([A-Za-z]+)/i
-    ];
-
-    const contactPatterns = [
-      /my number is (\d{3}[-.]?\d{3}[-.]?\d{4})/i,
-      /contact me at (\d{3}[-.]?\d{3}[-.]?\d{4})/i,
-      /phone number is (\d{3}[-.]?\d{3}[-.]?\d{4})/i
-    ];
-
-    return {
-      name: extractField(namePatterns, transcript) || 'Unknown',
-      location: extractField(locationPatterns, transcript) || 'Unknown location',
-      complaint: extractField(complaintPatterns, transcript) || 'Emergency',
-      contact: extractField(contactPatterns, transcript) || phoneNumber || 'Not provided',
-      description: transcript,
-      timestamp: new Date().toISOString()
+    recognition.onerror = (event) => {
+      console.error('Recognition error:', event.error);
+      setCallStatus(`Speech error: ${event.error}`);
     };
-  };
 
-  // Process recorded audio (fallback)
-  const processRecordedAudio = async () => {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        const fallbackData = {
-          name: 'Caller (from recording)',
-          location: 'Unknown location (from recording)',
-          complaint: 'Emergency (from recording)',
-          contact: phoneNumber || 'Not provided',
-          description: 'Full audio recording available',
-          timestamp: new Date().toISOString()
-        };
-        console.log('Using fallback data from recording');
-        resolve(fallbackData);
-      }, 2000);
-    });
-  };
-
-  // Store to blockchain (mock implementation)
-  const storeToBlockchain = async (data) => {
-    console.log('Storing to blockchain:', JSON.stringify(data, null, 2));
-    return new Promise(resolve => {
-      setTimeout(() => {
-        console.log('✅ Data successfully stored to blockchain');
-        resolve(true);
-      }, 1500);
-    });
+    recognitionRef.current = recognition;
+    return recognition;
   };
 
   const startRecording = async () => {
     try {
-      setCallStatus('Starting call...');
-      
-      // Initialize speech recognition
-      recognitionRef.current = initSpeechRecognition();
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-      }
+      setCallStatus('Initializing...');
+      setTranscript('');
+      setAudioURL('');
 
-      // Start audio recording
+      // Check microphone permissions
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         .catch(err => {
           throw new Error(`Microphone access denied: ${err.message}`);
         });
 
+      // Initialize speech recognition
+      const recognition = initSpeechRecognition();
+      if (!recognition) return;
+
+      // Set up media recorder
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
 
@@ -172,46 +81,44 @@ function HomePage() {
         audioChunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = async () => {
-        setCallStatus('Processing call data...');
-        
-        // Stop speech recognition if active
-        if (recognitionRef.current) {
-          recognitionRef.current.stop();
-        }
-
-        // Use extracted data if available, otherwise process recording
-        let finalData = extractedData;
-        if (!finalData.name || finalData.name === 'Unknown') {
-          finalData = await processRecordedAudio();
-          setExtractedData(finalData);
-        }
-
-        // Store to blockchain
-        setCallStatus('Storing to blockchain...');
-        await storeToBlockchain(finalData);
-        
-        setCallStatus('Call completed and data stored');
+      mediaRecorderRef.current.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        setAudioURL(URL.createObjectURL(audioBlob));
+        console.log('Audio recorded:', audioBlob);
       };
 
-      mediaRecorderRef.current.start();
+      // Start recording and recognition
+      recognition.start();
+      mediaRecorderRef.current.start(100); // Collect data every 100ms
+      
       setIsRecording(true);
-      setCallStatus('Call connected - recording started');
+      setCallStatus('Recording...');
+
+      // Start call timer
+      let seconds = 0;
+      callTimerRef.current = setInterval(() => {
+        seconds++;
+        setCallDuration(seconds);
+      }, 1000);
+
     } catch (err) {
       console.error('Recording error:', err);
       setCallStatus(`Error: ${err.message}`);
+      stopRecording();
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      setIsRecording(false);
     }
     if (recognitionRef.current) {
       recognitionRef.current.stop();
     }
+    clearInterval(callTimerRef.current);
+    setIsRecording(false);
+    setCallStatus(transcript ? 'Call completed' : 'No speech detected');
   };
 
   const handleNumberClick = (number) => {
@@ -222,25 +129,14 @@ function HomePage() {
 
   const handleCall = () => {
     if (!phoneNumber) return;
-
     setIsCalling(true);
-    setCallStatus('Connecting call...');
+    setCallDuration(0);
     startRecording();
-
-    let seconds = 0;
-    callTimerRef.current = setInterval(() => {
-      seconds++;
-      setCallDuration(seconds);
-    }, 1000);
   };
 
   const endCall = () => {
-    clearInterval(callTimerRef.current);
     stopRecording();
     setIsCalling(false);
-    setCallDuration(0);
-    setCallStatus('');
-    setTranscript('');
   };
 
   const formatTime = (seconds) => {
@@ -267,7 +163,10 @@ function HomePage() {
           >
             Create Complaint
           </button>
-          <button className="px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors">
+          <button 
+            className="px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+            onClick={() => navigate('/track-complaint')} // Added navigation here
+          >
             Track Complaint
           </button>
           <button className="bg-gray-100 border-none px-4 py-2 rounded-lg text-sm text-gray-900">
@@ -284,9 +183,7 @@ function HomePage() {
             </h1>
             <p className="text-xl text-gray-600 mb-8 leading-relaxed">
               Our decentralized platform provides a secure and transparent way for
-              citizens to register complaints and track their progress. With our system,
-              you can be confident that your information is protected and the process
-              is fair.
+              citizens to register complaints and track their progress.
             </p>
             <div className="flex gap-4">
               <button 
@@ -302,9 +199,6 @@ function HomePage() {
                 Emergency Call
               </button>
             </div>
-          </div>
-          <div className="content-right">
-            {/* You can add the circular navigation UI here */}
           </div>
         </div>
 
@@ -337,11 +231,17 @@ function HomePage() {
                     )}
                     {transcript && (
                       <div className="mt-2 text-xs text-gray-600">
-                        <p className="font-medium">Live Transcript:</p>
-                        <p className="truncate">"{transcript}"</p>
+                        <p className="font-medium">Transcript:</p>
+                        <p className="whitespace-pre-wrap">"{transcript}"</p>
                       </div>
                     )}
                   </div>
+                  
+                  {audioURL && (
+                    <div className="mb-4">
+                      <audio controls src={audioURL} className="w-full" />
+                    </div>
+                  )}
                   
                   <button
                     className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-medium"
@@ -349,29 +249,6 @@ function HomePage() {
                   >
                     End Call
                   </button>
-                  
-                  {extractedData && (
-                    <div className="mt-4 p-3 bg-gray-50 rounded-lg text-left">
-                      <h3 className="font-medium mb-2">Extracted Information:</h3>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="font-medium">Name:</span> {extractedData.name}
-                        </div>
-                        <div>
-                          <span className="font-medium">Location:</span> {extractedData.location}
-                        </div>
-                        <div className="col-span-2">
-                          <span className="font-medium">Complaint:</span> {extractedData.complaint}
-                        </div>
-                        <div>
-                          <span className="font-medium">Contact:</span> {extractedData.contact}
-                        </div>
-                        <div className="col-span-2 mt-2 text-xs text-gray-500">
-                          {new Date(extractedData.timestamp).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <>
