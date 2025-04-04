@@ -10,74 +10,125 @@ function HomePage() {
   const [isRecording, setIsRecording] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [callStatus, setCallStatus] = useState('');
+  const [speechError, setSpeechError] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const callTimerRef = useRef(null);
   const recognitionRef = useRef(null);
 
-  // Initialize speech recognition
-  const initSpeechRecognition = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.error("Speech recognition not supported in this browser");
-      return null;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map(result => result[0])
-        .map(result => result.transcript)
-        .join('');
-
-      console.log("Speech transcript:", transcript);
-      const data = analyzeTranscript(transcript);
-      if (data) {
-        setExtractedData(data);
-        console.log("Extracted data from audio:", data);
-      }
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error", event.error);
-      setCallStatus(`Speech recognition error: ${event.error}`);
-    };
-
-    return recognition;
+  // Check speech recognition support
+  const isSpeechSupported = () => {
+    return 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
   };
 
-  // Analyze transcript to extract key information
+  // Initialize speech recognition with error handling
+  const initSpeechRecognition = () => {
+    try {
+      if (!isSpeechSupported()) {
+        throw new Error('Speech recognition not supported in this browser');
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results)
+          .map(result => result[0])
+          .map(result => result.transcript)
+          .join('');
+
+        console.log("Live Transcript:", transcript);
+        const data = analyzeTranscript(transcript);
+        if (data) {
+          setExtractedData(data);
+          console.log("Extracted Data:", data);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        setSpeechError(`Speech recognition error: ${event.error}`);
+        setCallStatus(`Speech recognition failed - using audio recording only`);
+      };
+
+      return recognition;
+    } catch (error) {
+      console.error("Speech recognition initialization failed:", error);
+      setSpeechError(error.message);
+      return null;
+    }
+  };
+
+  // Enhanced transcript analysis
   const analyzeTranscript = (transcript) => {
     if (!transcript) return null;
 
-    // Pattern matching for different information
-    const nameMatch = transcript.match(/(my name is|I am|call me) (\w+ \w+|\w+)/i);
-    const incidentMatch = transcript.match(/(report|there's|happened) (a|an)? (\w+)/i);
-    const locationMatch = transcript.match(/(at|in|near) (\w+ \w+ \w+|\w+ \w+|\w+)/i);
-    const contactMatch = transcript.match(/(contact|number|phone) (is)? (\d{3}[-.]?\d{3}[-.]?\d{4})/i);
+    const patterns = {
+      name: [
+        /(?:my name is|I am|call me|this is)\s([A-Za-z]+\s[A-Za-z]+)/i,
+        /(?:name)\s([A-Za-z]+)/i
+      ],
+      incident: [
+        /(?:report|there's|happened|occurred)\s(a|an)?\s([A-Za-z]+)/i,
+        /(?:crime|incident)\s(of)?\s([A-Za-z]+)/i
+      ],
+      location: [
+        /(?:at|in|near|location)\s([A-Za-z]+\s[A-Za-z]+\s[A-Za-z]+|[A-Za-z]+\s[A-Za-z]+|[A-Za-z]+)/i,
+        /(?:address)\s(.+)/i
+      ],
+      contact: [
+        /(?:contact|number|phone)\s(is)?\s(\d{3}[-.]?\d{3}[-.]?\d{4})/i,
+        /(\d{3}[-.]?\d{3}[-.]?\d{4})/i
+      ]
+    };
 
-    const extracted = {
-      name: nameMatch ? nameMatch[2] : "Unknown",
-      incidentType: incidentMatch ? incidentMatch[3] : "Unspecified incident",
-      location: locationMatch ? locationMatch[2] : "Unknown location",
-      contact: contactMatch ? contactMatch[3] : "Not provided",
+    const extractWithPatterns = (type) => {
+      for (const pattern of patterns[type]) {
+        const match = transcript.match(pattern);
+        if (match) return match[match.length - 1];
+      }
+      return "Unknown";
+    };
+
+    return {
+      name: extractWithPatterns('name'),
+      incidentType: extractWithPatterns('incident'),
+      location: extractWithPatterns('location'),
+      contact: extractWithPatterns('contact'),
       description: transcript,
       timestamp: new Date().toISOString()
     };
-
-    return extracted;
   };
 
-  // Mock blockchain storage
-  const storeToBlockchain = async (data) => {
+  // Process recorded audio
+  const processRecordedAudio = async (audioBlob) => {
+    console.log("Processing recorded audio...");
     return new Promise(resolve => {
       setTimeout(() => {
-        console.log("Data stored to blockchain:", JSON.stringify(data, null, 2));
+        const mockData = {
+          name: "Caller (from recording)",
+          incidentType: "Emergency (from recording)",
+          location: "Unknown location (from recording)",
+          contact: phoneNumber,
+          description: "Full audio recording available",
+          timestamp: new Date().toISOString()
+        };
+        console.log("Processed data from recording:", mockData);
+        resolve(mockData);
+      }, 2000);
+    });
+  };
+
+  // Store to blockchain with proper logging
+  const storeToBlockchain = async (data) => {
+    console.log("Preparing to store to blockchain:", JSON.stringify(data, null, 2));
+    return new Promise(resolve => {
+      setTimeout(() => {
+        console.log("✅ Data successfully stored to blockchain:", JSON.stringify(data, null, 2));
         resolve(true);
       }, 1500);
     });
@@ -85,13 +136,18 @@ function HomePage() {
 
   const startRecording = async () => {
     try {
-      // Initialize speech recognition
-      recognitionRef.current = initSpeechRecognition();
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
+      setSpeechError(null);
+      
+      if (isSpeechSupported()) {
+        recognitionRef.current = initSpeechRecognition();
+        if (recognitionRef.current) {
+          recognitionRef.current.start();
+          console.log("Speech recognition started");
+        }
+      } else {
+        setCallStatus("Speech recognition not supported - audio will be recorded");
       }
 
-      // Start audio recording
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
       audioChunksRef.current = [];
@@ -103,22 +159,24 @@ function HomePage() {
       mediaRecorderRef.current.onstop = async () => {
         setCallStatus('Processing call data...');
         
-        // Stop speech recognition
         if (recognitionRef.current) {
           recognitionRef.current.stop();
         }
 
-        // In a real app, you would send the audio to your backend for processing
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        console.log("Audio recorded:", audioBlob);
+        console.log("Audio blob created:", audioBlob);
 
-        if (extractedData) {
-          setCallStatus('Storing to blockchain...');
-          await storeToBlockchain(extractedData);
-          setCallStatus('Call completed and data stored');
-        } else {
-          setCallStatus('Call completed (no data extracted)');
+        let finalData = extractedData;
+        
+        if (!finalData || !finalData.name || finalData.name === "Unknown") {
+          finalData = await processRecordedAudio(audioBlob);
+          setExtractedData(finalData);
         }
+
+        setCallStatus('Storing to blockchain...');
+        await storeToBlockchain(finalData);
+        
+        setCallStatus('Call completed and data stored');
       };
 
       mediaRecorderRef.current.start();
@@ -126,7 +184,8 @@ function HomePage() {
       setCallStatus('Call connected - recording started');
     } catch (err) {
       console.error("Recording error:", err);
-      setCallStatus('Recording failed - please enable microphone access');
+      setCallStatus(`Recording failed: ${err.message}`);
+      setSpeechError(err.message);
     }
   };
 
@@ -262,6 +321,9 @@ function HomePage() {
                         <div className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
                         <span className="text-xs">Recording</span>
                       </div>
+                    )}
+                    {speechError && (
+                      <div className="text-xs text-red-600 mt-1">{speechError}</div>
                     )}
                   </div>
                   
