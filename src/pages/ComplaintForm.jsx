@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaVolumeUp, FaCar, FaExclamationTriangle, FaUserSlash, FaTrash, FaHome, FaUserSecret, FaBuilding, FaFire, FaFileAlt, FaCheck, FaUpload } from 'react-icons/fa';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import '../styles/ComplaintForm.css';
 
 function ComplaintForm() {
@@ -16,7 +17,14 @@ function ComplaintForm() {
   const [email, setEmail] = useState('');
   const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ipfsHash, setIpfsHash] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Pinata configuration
+  const pinataApiKey = "f1eed63bf925da74438e";
+  const pinataApiSecret = "2a4df1e27d2cf930e707956ba0def1721c398318197317bcf7593bb8c935a811";
+  const pinataEndpoint = "https://api.pinata.cloud/pinning/pinFileToIPFS";
+  const pinataJSONEndpoint = "https://api.pinata.cloud/pinning/pinJSONToIPFS";
 
   const suggestions = [
     'No.36, south alley, chennai',
@@ -65,22 +73,117 @@ function ComplaintForm() {
     setSelectedFiles(files);
   };
 
+  // Function to upload files to IPFS via Pinata
+  const uploadFilesToIPFS = async () => {
+    if (selectedFiles.length === 0) {
+      return [];
+    }
+
+    const uploadedFiles = [];
+    
+    for (const file of selectedFiles) {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      try {
+        const response = await axios.post(pinataEndpoint, formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            pinata_api_key: pinataApiKey,
+            pinata_secret_api_key: pinataApiSecret,
+          },
+        });
+        
+        uploadedFiles.push({
+          name: file.name,
+          ipfsHash: response.data.IpfsHash,
+          url: `https://ipfs.io/ipfs/${response.data.IpfsHash}`
+        });
+      } catch (error) {
+        console.error(`Error uploading file ${file.name}:`, error);
+        toast.error(`Failed to upload file ${file.name}`);
+      }
+    }
+    
+    return uploadedFiles;
+  };
+
+  // Function to upload complaint data to IPFS via Pinata
+  const uploadComplaintToIPFS = async (fileHashes) => {
+    const complaintData = {
+      complaintType: getSelectedComplaintType(),
+      description: description,
+      location: location,
+      evidence: {
+        files: fileHashes,
+        description: evidenceDescription
+      },
+      contactInfo: {
+        email: email
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    try {
+      const response = await axios.post(pinataJSONEndpoint, 
+        complaintData,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            pinata_api_key: pinataApiKey,
+            pinata_secret_api_key: pinataApiSecret,
+          },
+        }
+      );
+      
+      return response.data.IpfsHash;
+    } catch (error) {
+      console.error("Error uploading complaint data:", error);
+      throw error;
+    }
+  };
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    toast.success('Complaint submitted successfully!', {
-      duration: 4000,
-      style: {
-        background: '#CBFF96',
-        color: '#1A1A1A',
-      },
-    });
-    
-    setTimeout(() => {
-      navigate('/');
-    }, 2000);
+    try {
+      // First upload any evidence files to IPFS
+      const uploadedFiles = await uploadFilesToIPFS();
+      
+      // Then upload the entire complaint data to IPFS
+      const complaintHash = await uploadComplaintToIPFS(uploadedFiles);
+      
+      // Store the IPFS hash for reference
+      setIpfsHash(complaintHash);
+      
+      // Show success message with IPFS link
+      toast.success(
+        <div>
+          Complaint submitted successfully!<br/>
+          <small>
+            IPFS Hash: <a href={`https://ipfs.io/ipfs/${complaintHash}`} target="_blank" rel="noopener noreferrer">{complaintHash.substring(0, 8)}...</a>
+          </small>
+        </div>,
+        {
+          duration: 6000,
+          style: {
+            background: '#CBFF96',
+            color: '#1A1A1A',
+          },
+        }
+      );
+      
+      // Navigate home after success
+      setTimeout(() => {
+        navigate('/');
+      }, 4000);
+      
+    } catch (error) {
+      console.error("Error submitting complaint:", error);
+      toast.error("Failed to submit complaint. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getSelectedComplaintType = () => {
@@ -318,7 +421,7 @@ function ComplaintForm() {
                 <h3>Evidence</h3>
                 <p className="review-value">
                   {selectedFiles.length > 0 
-                    ? `${selectedFiles.length} file(s) uploaded` 
+                    ? `${selectedFiles.length} file(s) selected for upload` 
                     : 'No files uploaded'}
                 </p>
                 <p className="review-description">
@@ -329,6 +432,12 @@ function ComplaintForm() {
               <div className="review-item">
                 <h3>Contact Information</h3>
                 <p className="review-value">{email}</p>
+              </div>
+
+              <div className="ipfs-info">
+                <p className="ipfs-notice">
+                  Your complaint data will be stored securely on IPFS (InterPlanetary File System).
+                </p>
               </div>
             </div>
 
@@ -341,7 +450,7 @@ function ComplaintForm() {
                 onClick={handleSubmit}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Submitting...' : 'Submit Complaint'}
+                {isSubmitting ? 'Submitting to IPFS...' : 'Submit Complaint'}
               </button>
             </div>
           </div>
@@ -354,7 +463,7 @@ function ComplaintForm() {
   return (
     <div className="complaint-form-container">
       <h1>Register New Complaint</h1>
-      <p className="subtitle">Please provide the details of your complaint. All information will be kept confidential.</p>
+      <p className="subtitle">Please provide the details of your complaint. All information will be stored securely on IPFS.</p>
 
       <div className="progress-steps">
         <div className={`step ${currentStep >= 1 ? 'active' : ''} ${currentStep > 1 ? 'completed' : ''}`}>
@@ -388,6 +497,20 @@ function ComplaintForm() {
       </div>
 
       {renderStep()}
+      
+      {ipfsHash && (
+        <div className="ipfs-success">
+          <p>Your complaint has been stored on IPFS with hash: 
+            <a 
+              href={`https://ipfs.io/ipfs/${ipfsHash}`} 
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {ipfsHash}
+            </a>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
