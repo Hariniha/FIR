@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaVolumeUp, FaCar, FaExclamationTriangle, FaUserSlash, FaTrash, FaHome, FaUserSecret, FaBuilding, FaFire, FaFileAlt, FaCheck, FaUpload } from 'react-icons/fa';
+import { FaVolumeUp, FaCar, FaExclamationTriangle, FaUserSlash, FaTrash, FaHome, FaUserSecret, FaBuilding, FaFire, FaFileAlt, FaCheck, FaUpload, FaTimes, FaExternalLinkAlt } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import '../styles/ComplaintForm.css';
@@ -17,7 +17,9 @@ function ComplaintForm() {
   const [email, setEmail] = useState('');
   const [showEmailSuggestions, setShowEmailSuggestions] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [ipfsHash, setIpfsHash] = useState(null);
+  const [complaintIpfsHash, setComplaintIpfsHash] = useState(null);
+  const [evidenceIpfsHashes, setEvidenceIpfsHashes] = useState([]);
+  const [showIpfsPopup, setShowIpfsPopup] = useState(false);
   const fileInputRef = useRef(null);
 
   // Pinata configuration
@@ -149,34 +151,23 @@ function ComplaintForm() {
     try {
       // First upload any evidence files to IPFS
       const uploadedFiles = await uploadFilesToIPFS();
+      setEvidenceIpfsHashes(uploadedFiles);
       
       // Then upload the entire complaint data to IPFS
       const complaintHash = await uploadComplaintToIPFS(uploadedFiles);
+      setComplaintIpfsHash(complaintHash);
       
-      // Store the IPFS hash for reference
-      setIpfsHash(complaintHash);
+      // Show success message
+      toast.success("Complaint submitted successfully!", {
+        duration: 4000,
+        style: {
+          background: '#CBFF96',
+          color: '#1A1A1A',
+        },
+      });
       
-      // Show success message with IPFS link
-      toast.success(
-        <div>
-          Complaint submitted successfully!<br/>
-          <small>
-            IPFS Hash: <a href={`https://ipfs.io/ipfs/${complaintHash}`} target="_blank" rel="noopener noreferrer">{complaintHash.substring(0, 8)}...</a>
-          </small>
-        </div>,
-        {
-          duration: 6000,
-          style: {
-            background: '#CBFF96',
-            color: '#1A1A1A',
-          },
-        }
-      );
-      
-      // Navigate home after success
-      setTimeout(() => {
-        navigate('/');
-      }, 4000);
+      // Show the IPFS popup with hash information
+      setShowIpfsPopup(true);
       
     } catch (error) {
       console.error("Error submitting complaint:", error);
@@ -189,6 +180,75 @@ function ComplaintForm() {
   const getSelectedComplaintType = () => {
     const selected = complaintTypes.find(type => type.id === selectedType);
     return selected ? selected.label : '';
+  };
+
+  // Function to handle clicking on an IPFS hash link
+  const openIPFSLink = (ipfsHash) => {
+    window.open(`https://ipfs.io/ipfs/${ipfsHash}`, '_blank');
+  };
+
+  // Function to close the popup and navigate home
+  const closePopupAndNavigate = () => {
+    setShowIpfsPopup(false);
+    navigate('/');
+  };
+
+  // IPFS Popup Component
+  const IpfsPopup = () => {
+    if (!showIpfsPopup) return null;
+    
+    return (
+      <div className="ipfs-popup-overlay">
+        <div className="ipfs-popup-content">
+          <div className="ipfs-popup-header">
+            <h2>Complaint Successfully Stored on IPFS</h2>
+            <button className="close-button" onClick={closePopupAndNavigate}>
+              <FaTimes />
+            </button>
+          </div>
+          
+          <div className="ipfs-popup-body">
+            <div className="ipfs-section">
+              <h3>FIR (Complete Complaint):</h3>
+              <div className="ipfs-hash-container" onClick={() => openIPFSLink(complaintIpfsHash)}>
+                <span className="ipfs-hash">{complaintIpfsHash}</span>
+                <FaExternalLinkAlt className="external-link-icon" />
+              </div>
+              <p className="ipfs-description">Click on the hash to view your complete complaint details</p>
+            </div>
+            
+            {evidenceIpfsHashes.length > 0 && (
+              <div className="ipfs-section">
+                <h3>Evidence Files:</h3>
+                {evidenceIpfsHashes.map((file, index) => (
+                  <div key={index} className="evidence-item">
+                    <span className="evidence-name">{file.name}</span>
+                    <div 
+                      className="ipfs-hash-container" 
+                      onClick={() => openIPFSLink(file.ipfsHash)}
+                    >
+                      <span className="ipfs-hash">{file.ipfsHash}</span>
+                      <FaExternalLinkAlt className="external-link-icon" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <div className="ipfs-notes">
+              <p>Please save these IPFS hashes for your records. 
+              They provide permanent access to your complaint data.</p>
+            </div>
+          </div>
+          
+          <div className="ipfs-popup-footer">
+            <button className="primary-button" onClick={closePopupAndNavigate}>
+              Return to Home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderStep = () => {
@@ -498,19 +558,147 @@ function ComplaintForm() {
 
       {renderStep()}
       
-      {ipfsHash && (
-        <div className="ipfs-success">
-          <p>Your complaint has been stored on IPFS with hash: 
-            <a 
-              href={`https://ipfs.io/ipfs/${ipfsHash}`} 
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {ipfsHash}
-            </a>
-          </p>
-        </div>
-      )}
+      {/* IPFS Popup Dialog */}
+      <IpfsPopup />
+      
+      {/* Add CSS for the popup */}
+      <style jsx>{`
+        .ipfs-popup-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.7);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 1000;
+        }
+        
+        .ipfs-popup-content {
+          background-color: white;
+          border-radius: 8px;
+          width: 90%;
+          max-width: 600px;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .ipfs-popup-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid #eaeaea;
+        }
+        
+        .ipfs-popup-header h2 {
+          margin: 0;
+          font-size: 1.5rem;
+          color: #333;
+        }
+        
+        .close-button {
+          background: none;
+          border: none;
+          cursor: pointer;
+          font-size: 1.2rem;
+          color: #666;
+        }
+        
+        .ipfs-popup-body {
+          padding: 20px;
+        }
+        
+        .ipfs-section {
+          margin-bottom: 24px;
+        }
+        
+        .ipfs-section h3 {
+          margin-top: 0;
+          margin-bottom: 12px;
+          color: #333;
+        }
+        
+        .ipfs-hash-container {
+          display: flex;
+          align-items: center;
+          background-color: #f7f7f7;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+          padding: 10px 12px;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          margin-bottom: 8px;
+        }
+        
+        .ipfs-hash-container:hover {
+          background-color: #eaf7ff;
+        }
+        
+        .ipfs-hash {
+          font-family: monospace;
+          flex-grow: 1;
+          word-break: break-all;
+        }
+        
+        .external-link-icon {
+          margin-left: 10px;
+          color: #0066cc;
+        }
+        
+        .evidence-item {
+          margin-bottom: 16px;
+        }
+        
+        .evidence-name {
+          display: block;
+          margin-bottom: 6px;
+          font-weight: 500;
+        }
+        
+        .ipfs-description {
+          font-size: 0.9rem;
+          color: #666;
+          margin-top: 4px;
+        }
+        
+        .ipfs-notes {
+          margin-top: 24px;
+          padding: 12px;
+          background-color: #fffde7;
+          border-left: 4px solid #ffd600;
+          border-radius: 4px;
+        }
+        
+        .ipfs-notes p {
+          margin: 0;
+          font-size: 0.9rem;
+        }
+        
+        .ipfs-popup-footer {
+          padding: 16px 20px;
+          border-top: 1px solid #eaeaea;
+          text-align: right;
+        }
+        
+        .primary-button {
+          background-color: #b4fd6a;
+          color: black;
+          border: none;
+          border-radius: 4px;
+          padding: 10px 16px;
+          cursor: pointer;
+          font-weight: 500;
+          transition: background-color 0.2s;
+        }
+        
+        .primary-button:hover {
+          background-color: #a5ff4b;
+        }
+      `}</style>
     </div>
   );
 }
