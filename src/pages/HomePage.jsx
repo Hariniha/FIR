@@ -45,7 +45,17 @@ function HomePage() {
 
       console.log('Interim:', interimTranscript);
       console.log('Final:', finalTranscript);
-      setTranscript(prev => prev + finalTranscript);
+      setTranscript(prev => {
+        const newTranscript = prev + finalTranscript;
+        console.log('Saving to localStorage:', newTranscript);
+        try {
+          localStorage.setItem('callTranscript', newTranscript);
+          console.log('Successfully saved to localStorage');
+        } catch (error) {
+          console.error('Error saving to localStorage:', error);
+        }
+        return newTranscript;
+      });
     };
 
     recognition.onerror = (event) => {
@@ -57,11 +67,32 @@ function HomePage() {
     return recognition;
   };
 
+  // Load saved transcript from localStorage on component mount
+  useEffect(() => {
+    console.log('Component mounted, checking localStorage...');
+    try {
+      const savedTranscript = localStorage.getItem('callTranscript');
+      console.log('Loaded from localStorage:', savedTranscript);
+      if (savedTranscript) {
+        setTranscript(savedTranscript);
+      }
+    } catch (error) {
+      console.error('Error reading from localStorage:', error);
+    }
+  }, []);
+
   const startRecording = async () => {
     try {
       setCallStatus('Initializing...');
       setTranscript('');
       setAudioURL('');
+      console.log('Clearing previous localStorage transcript');
+      try {
+        localStorage.removeItem('callTranscript');
+        console.log('Successfully cleared localStorage');
+      } catch (error) {
+        console.error('Error clearing localStorage:', error);
+      }
 
       // Check microphone permissions
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -119,6 +150,15 @@ function HomePage() {
     clearInterval(callTimerRef.current);
     setIsRecording(false);
     setCallStatus(transcript ? 'Call completed' : 'No speech detected');
+    
+    // Final save to localStorage when stopping
+    console.log('Final save to localStorage:', transcript);
+    try {
+      localStorage.setItem('callTranscript', transcript);
+      console.log('Final save successful');
+    } catch (error) {
+      console.error('Error in final save:', error);
+    }
   };
 
   const handleNumberClick = (number) => {
@@ -145,6 +185,12 @@ function HomePage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const checkLocalStorage = () => {
+    const saved = localStorage.getItem('callTranscript');
+    console.log('Current localStorage content:', saved);
+    alert(`Current localStorage content:\n\n${saved || 'Empty'}`);
+  };
+
   useEffect(() => {
     return () => {
       if (callTimerRef.current) clearInterval(callTimerRef.current);
@@ -165,7 +211,7 @@ function HomePage() {
           </button>
           <button 
             className="px-4 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-            onClick={() => navigate('/track-complaint')} // Added navigation here
+            onClick={() => navigate('/track-complaint')}
           >
             Track Complaint
           </button>
@@ -197,7 +243,8 @@ function HomePage() {
                 onClick={() => setShowDialPad(true)}
               >
                 Emergency Call
-              </button>
+              </button> 
+               
             </div>
           </div>
         </div>
